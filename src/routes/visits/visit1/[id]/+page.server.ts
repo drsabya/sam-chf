@@ -9,6 +9,7 @@ export type VisitType = {
 	visitNumber: number;
 	startDate: string;
 	dueDate: string;
+	scheduledOn?: string | null;
 	completedOn?: string | null;
 
 	// IMPORTANT DOCUMENTS
@@ -26,11 +27,22 @@ export type VisitType = {
 	death?: boolean;
 };
 
+export type ParticipantLite = {
+	id: string;
+	screeningId: number | null;
+	firstName: string;
+	middleName?: string;
+	lastName: string;
+	initials: string;
+	phone: string;
+	randomizationId: number | null;
+};
+
 /** Normalize Firestore Timestamp | string | Date → ISO string */
 function norm(value: any): string {
 	if (!value) return '';
 	if (value instanceof Date) return value.toISOString();
-	if (typeof value.toDate === 'function') return value.toDate().toISOString();
+	if (typeof value?.toDate === 'function') return value.toDate().toISOString();
 	if (typeof value === 'string') return value;
 	return '';
 }
@@ -43,23 +55,25 @@ function normNullable(value: any): string | null {
 
 export const load = (async ({ params }) => {
 	const { id } = params;
-
 	if (!id) throw error(400, 'Missing visit id');
 
-	// 🔥 Read using Admin SDK — NO PERMISSION PROBLEMS
-	const snap = await adminDb.collection('visits').doc(id).get();
-	if (!snap.exists) throw error(404, 'Visit not found');
+	// -------------------------------
+	// 1) FETCH VISIT (Admin SDK)
+	// -------------------------------
+	const visitSnap = await adminDb.collection('visits').doc(id).get();
+	if (!visitSnap.exists) throw error(404, 'Visit not found');
 
-	const data = snap.data() as FirebaseFirestore.DocumentData;
+	const data = visitSnap.data() as FirebaseFirestore.DocumentData;
 
 	const visit: VisitType = {
-		id: snap.id,
+		id: visitSnap.id,
 		participantId: (data.participantId as string) ?? (data.participant_id as string) ?? '',
 
-		visitNumber: (typeof data.visitNumber === 'number' ? data.visitNumber : data.visit_number) ?? 1,
+		visitNumber: typeof data.visitNumber === 'number' ? data.visitNumber : (data.visit_number ?? 1),
 
 		startDate: norm(data.startDate ?? data.start_date ?? data.createdAt),
 		dueDate: norm(data.dueDate ?? data.due_date),
+		scheduledOn: normNullable(data.scheduledOn ?? data.scheduled_on),
 		completedOn: normNullable(data.completedOn ?? data.completed_on),
 
 		// DOCUMENT UPLOADS
@@ -90,5 +104,30 @@ export const load = (async ({ params }) => {
 		death: data.death ?? false
 	};
 
-	return { visit };
+	// ------------------------------------
+	// 2) FETCH PARTICIPANT DETAILS
+	// ------------------------------------
+	const participantId = visit.participantId;
+	if (!participantId) throw error(500, 'Visit missing participantId');
+
+	const pSnap = await adminDb.collection('participants').doc(participantId).get();
+	if (!pSnap.exists) throw error(404, 'Participant not found');
+
+	const p = pSnap.data() as FirebaseFirestore.DocumentData;
+
+	const participant: ParticipantLite = {
+		id: pSnap.id,
+		screeningId: p.screeningId ?? p.screening_id ?? null,
+		firstName: p.firstName ?? '',
+		middleName: p.middleName ?? '',
+		lastName: p.lastName ?? '',
+		initials: p.initials ?? '',
+		phone: p.phone ?? '',
+		randomizationId: p.randomizationId ?? p.randomization_id ?? null
+	};
+
+	return {
+		visit,
+		participant
+	};
 }) satisfies PageServerLoad;

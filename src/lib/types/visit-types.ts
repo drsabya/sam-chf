@@ -4,6 +4,7 @@ export type VisitType = {
 	visitNumber: number;
 	startDate: string;
 	dueDate: string;
+	// scheduledOn: string | null; // 👉 default null when not scheduled
 	completedOn: string | null; // 👉 default null when visit not completed
 
 	// IMPORTANT DOCUMENTS

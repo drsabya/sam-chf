@@ -14,6 +14,7 @@
 		visitNumber: number | null;
 		visitId: string | null;
 		status: string;
+		randomizationId?: string | null; // ✅ added for pill on right
 	};
 
 	let { data }: PageProps = $props();
@@ -42,13 +43,13 @@
 		return `/participants/${v.participantId}`;
 	};
 
-	// Now used for the label above the name → show as S1, S2, …
+	// Show as S1, S2, …
 	const formatScreeningId = (id: number | null) => {
 		if (id == null) return '—';
 		return `S${id}`;
 	};
 
-	// New helper: avatar badge content → V1, V2, …
+	// Avatar badge content → V1, V2, …
 	const formatVisitBadge = (visitNumber: number | null) => {
 		if (!visitNumber) return '—';
 		return `V${visitNumber}`;
@@ -136,7 +137,7 @@
 								class="group relative flex items-center justify-between overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5 transition-all hover:shadow-md hover:ring-emerald-500/50"
 							>
 								<div class="flex items-center gap-4">
-									<!-- Avatar badge: show visit number as V1 / V2 / V3... -->
+									<!-- Avatar badge: visit number as V1 / V2 / V3... -->
 									<div
 										class="flex h-12 min-w-[3rem] items-center justify-center rounded-xl bg-emerald-50 px-3 font-mono text-xs font-bold text-emerald-700 transition-colors group-hover:bg-emerald-100"
 									>
@@ -144,11 +145,7 @@
 									</div>
 
 									<div class="flex flex-col gap-0.5">
-										<!-- Label ABOVE the name: show Screening ID -->
-										<span class="text-xs font-semibold text-slate-500 uppercase">
-											{formatScreeningId(v.screeningId)}
-										</span>
-
+										<!-- Name -->
 										<span class="text-base font-medium text-slate-900">
 											{getFullName(v) || 'Unnamed participant'}
 										</span>
@@ -167,22 +164,21 @@
 									</div>
 								</div>
 
-								<div class="flex items-center gap-4">
-									<span
-										class="rounded-full p-1 text-slate-300 transition-colors group-hover:text-emerald-600"
+								<!-- Right side: screening ID + randomization ID pills (like participants page) -->
+								<div class="flex flex-shrink-0 items-center gap-2">
+									<div
+										class="rounded-md bg-emerald-300 px-2 py-1 text-xs font-semibold tracking-wide text-gray-900 uppercase"
 									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="20"
-											height="20"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg
+										{formatScreeningId(v.screeningId)}
+									</div>
+
+									{#if v.randomizationId}
+										<div
+											class="rounded-md bg-purple-200 px-2 py-1 text-xs font-semibold tracking-wide text-gray-900 uppercase"
 										>
-									</span>
+											{v.randomizationId}
+										</div>
+									{/if}
 								</div>
 							</a>
 						</li>

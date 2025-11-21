@@ -77,23 +77,21 @@
 	}
 </script>
 
-<main class="flex min-h-screen items-center justify-center bg-gray-50 px-6 py-16 text-gray-900">
+<main class="flex min-h-screen items-start justify-center bg-gray-50 px-6 py-16 text-gray-900">
 	<div class="w-full max-w-3xl space-y-12 pb-16">
-		<!-- Clean heading -->
-		<section class="space-y-2">
-			<h1 class="text-xl font-bold tracking-tight sm:text-4xl">Screening eligibility</h1>
-		</section>
-
 		<!-- Eligibility checkboxes -->
 		<section class="space-y-6">
-			<h2 class="text-sm font-semibold tracking-[0.18em] text-gray-500 uppercase">
+			<p class="mt-2 rounded bg-amber-100 p-2 text-center text-xs font-semibold text-amber-700">
+				Do not generate ID if eligibility criteria are not met.
+			</p>
+			<h2 class="text-center text-sm font-semibold tracking-[0.18em] text-gray-500 uppercase">
 				CORE ELIGIBILITY
 			</h2>
 
 			<form class="space-y-4">
 				<!-- Criterion 1 -->
 				<label
-					class="flex cursor-pointer items-start gap-4 rounded-2xl border border-gray-300 bg-white px-5 py-4 shadow-sm transition hover:border-emerald-400"
+					class="flex cursor-pointer items-center gap-4 rounded-2xl border border-gray-300 bg-white px-5 py-4 shadow-sm transition hover:border-emerald-400"
 				>
 					<input
 						type="checkbox"
@@ -124,7 +122,7 @@
 		</section>
 
 		<!-- Start Screening button (full width, bigger, enabled only when all checked) -->
-		<div class="space-y-2 pt-4">
+		<div class="">
 			<button
 				type="button"
 				on:click={handleStartScreening}
@@ -137,9 +135,6 @@
 				{isSubmitting ? 'Generating…' : 'Generate Screening ID'}
 			</button>
 
-			<p class="mt-2 text-xs font-semibold text-emerald-600">
-				Do not generate ID if eligibility criteria are not met.
-			</p>
 			{#if errorMessage}
 				<p class="text-sm text-red-600">{errorMessage}</p>
 			{/if}
