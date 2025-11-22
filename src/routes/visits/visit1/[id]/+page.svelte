@@ -230,12 +230,30 @@
 		return file.type.startsWith('image/');
 	}
 
+	function getEcgLabel(): string {
+		const initials = participant.initials?.trim() ?? '';
+		const screeningId = participant.screeningId != null ? String(participant.screeningId) : '';
+		const visitNumber = visit.visitNumber != null ? `V${visit.visitNumber}` : 'V1';
+
+		// Join only the non-empty parts with a space
+		return [initials, screeningId, visitNumber].filter(Boolean).join(' ');
+	}
+	// 👉 Label for Echo = "INITIALS SCREENINGID V<visitNumber>"
+	function getEchoLabel(): string {
+		const initials = participant.initials?.trim() ?? '';
+		const screeningId = participant.screeningId != null ? String(participant.screeningId) : '';
+		const visitNumber = visit.visitNumber != null ? `V${visit.visitNumber}` : 'V1';
+
+		return [initials, screeningId, visitNumber].filter(Boolean).join(' ');
+	}
+
 	/**
 	 * Converts one or more image files to a single multi-page PDF.
 	 * - Each image maintains aspect ratio and fits within A4.
+	 * - Optional label text is added in BLACK at the top-right of every page.
 	 * - If there are NO image files: falls back to returning the first file as-is.
 	 */
-	async function convertFilesToSinglePdf(files: File[]): Promise<File> {
+	async function convertFilesToSinglePdf(files: File[], labelText?: string): Promise<File> {
 		if (files.length === 0) {
 			throw new Error('No files to convert');
 		}
@@ -255,6 +273,11 @@
 		const pageWidth = pdf.internal.pageSize.getWidth(); // 595
 		const pageHeight = pdf.internal.pageSize.getHeight(); // 842
 
+		// Reserve a bit of space at top for the label so it doesn't overlap the image
+		const topMargin = 32;
+		const bottomMargin = 16;
+		const availableHeight = pageHeight - topMargin - bottomMargin;
+
 		for (let i = 0; i < imageFiles.length; i++) {
 			const imgFile = imageFiles[i];
 			const dataUrl = await fileToDataURL(imgFile);
@@ -263,16 +286,30 @@
 			const imgW = img.naturalWidth || img.width;
 			const imgH = img.naturalHeight || img.height;
 
-			// ---- Maintain aspect ratio within A4 ----
-			const scale = Math.min(pageWidth / imgW, pageHeight / imgH);
+			// ---- Maintain aspect ratio within A4 (inside available vertical space) ----
+			const scale = Math.min(pageWidth / imgW, availableHeight / imgH);
 			const finalW = imgW * scale;
 			const finalH = imgH * scale;
 
-			// ---- Center image on A4 ----
+			// ---- Center image vertically within the safe area, and horizontally on the page ----
 			const x = (pageWidth - finalW) / 2;
-			const y = (pageHeight - finalH) / 2;
+			const y = topMargin + (availableHeight - finalH) / 2;
 
 			if (i > 0) pdf.addPage();
+
+			// 👉 Draw label (if provided) at top-right in BRIGHT RED & bigger font
+			if (labelText) {
+				pdf.setTextColor(255, 0, 0); // bright red
+				pdf.setFontSize(18); // bigger font
+				const marginRight = 20;
+				const marginTop = 32;
+
+				const textWidth = pdf.getTextWidth(labelText);
+				const textX = pageWidth - textWidth - marginRight;
+				const textY = marginTop;
+
+				pdf.text(labelText, textX, textY);
+			}
 
 			pdf.addImage(dataUrl, imgFile.type === 'image/png' ? 'PNG' : 'JPEG', x, y, finalW, finalH);
 		}
@@ -363,9 +400,54 @@
 		}
 	}
 
+	// ---- Call Gemini extraction for efficacy report ----
+	async function analyzeEfficacyWithAI() {
+		if (efficacyReportFiles.length === 0) return;
+
+		const file = efficacyReportFiles[0]; // keep it simple: first file only
+
+		extractingEfficacy = true;
+		extractionError = null;
+
+		try {
+			const formData = new FormData();
+			formData.append('file', file);
+
+			const res = await fetch('/apis/vision/efficacy', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (!res.ok) {
+				throw new Error('AI extraction failed');
+			}
+
+			const data = await res.json();
+
+			tshValue = data.tsh ?? null;
+			homocysteineValue = data.homocysteine ?? null;
+			bnpValue = data.bnp ?? null;
+		} catch (err) {
+			extractionError =
+				err && typeof err === 'object' && 'message' in err
+					? String((err as { message?: string }).message)
+					: 'AI extraction failed';
+		} finally {
+			extractingEfficacy = false;
+		}
+	}
+
 	// ---- Voucher + disposition state ----
 	let voucherStatus = $state<'given' | 'not_given' | ''>('');
 	let disposition = $state<'success' | 'failure' | ''>('');
+
+	// ---- Gemini extraction state for efficacy report ----
+	let tshValue = $state<number | null>(null);
+	let homocysteineValue = $state<number | null>(null);
+	let bnpValue = $state<number | null>(null);
+
+	let extractingEfficacy = $state(false);
+	let extractionError = $state<string | null>(null);
 
 	const primaryButtonLabel = $derived(
 		disposition === 'failure'
@@ -611,12 +693,10 @@
 
 										let fileToUpload: File;
 
-										// If exactly one non-image file (e.g. a single PDF), keep as-is
 										if (ecgFiles.length === 1 && !isImageFile(ecgFiles[0])) {
 											fileToUpload = ecgFiles[0];
 										} else {
-											// Multiple images, or mix with at least one image → multi-page PDF
-											fileToUpload = await convertFilesToSinglePdf(ecgFiles);
+											fileToUpload = await convertFilesToSinglePdf(ecgFiles, getEcgLabel());
 										}
 
 										const key = await uploadFileToR2(fileToUpload, 'ecg');
@@ -735,7 +815,10 @@
 										if (echoFiles.length === 1 && !isImageFile(echoFiles[0])) {
 											fileToUpload = echoFiles[0];
 										} else {
-											fileToUpload = await convertFilesToSinglePdf(echoFiles);
+											fileToUpload = await convertFilesToSinglePdf(
+												echoFiles,
+												getEchoLabel() // 👉 ADD THIS
+											);
 										}
 
 										const key = await uploadFileToR2(fileToUpload, 'echo');
@@ -822,7 +905,7 @@
 								/>
 							</label>
 						{:else}
-							<div class="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+							<div class="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
 								<div class="flex items-center justify-between gap-3 overflow-hidden">
 									<div class="flex items-center gap-3 overflow-hidden">
 										<div class="rounded-lg bg-white p-2 text-emerald-600 shadow-sm">
@@ -837,7 +920,7 @@
 											<p class="text-xs text-emerald-600">
 												{uploadingField === 'efficacy'
 													? 'Uploading…'
-													: 'Ready to convert to PDF and upload'}
+													: 'Ready to convert / upload or analyse with AI'}
 											</p>
 										</div>
 									</div>
@@ -849,31 +932,61 @@
 										<X size={18} />
 									</button>
 								</div>
-								<button
-									type="button"
-									on:click={async () => {
-										if (efficacyReportFiles.length === 0 || uploadingField) return;
 
-										let fileToUpload: File;
+								<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+									<button
+										type="button"
+										on:click={async () => {
+											if (efficacyReportFiles.length === 0 || uploadingField) return;
 
-										if (efficacyReportFiles.length === 1 && !isImageFile(efficacyReportFiles[0])) {
-											fileToUpload = efficacyReportFiles[0];
-										} else {
-											fileToUpload = await convertFilesToSinglePdf(efficacyReportFiles);
-										}
+											let fileToUpload: File;
 
-										const key = await uploadFileToR2(fileToUpload, 'efficacy');
-										if (key) {
-											clearEfficacyFiles();
-										}
-									}}
-									disabled={efficacyReportFiles.length === 0 || !!uploadingField}
-									class="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-300"
-								>
-									{uploadingField === 'efficacy'
-										? 'Uploading…'
-										: 'Convert to PDF & upload efficacy report'}
-								</button>
+											if (
+												efficacyReportFiles.length === 1 &&
+												!isImageFile(efficacyReportFiles[0])
+											) {
+												fileToUpload = efficacyReportFiles[0];
+											} else {
+												fileToUpload = await convertFilesToSinglePdf(efficacyReportFiles);
+											}
+
+											const key = await uploadFileToR2(fileToUpload, 'efficacy');
+											if (key) {
+												clearEfficacyFiles();
+											}
+										}}
+										disabled={efficacyReportFiles.length === 0 || !!uploadingField}
+										class="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-300"
+									>
+										{uploadingField === 'efficacy' ? 'Uploading…' : 'Convert to PDF & upload'}
+									</button>
+
+									<button
+										type="button"
+										on:click={analyzeEfficacyWithAI}
+										disabled={efficacyReportFiles.length === 0 || extractingEfficacy}
+										class="inline-flex w-full items-center justify-center rounded-lg border border-emerald-400 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-emerald-200 disabled:text-emerald-300"
+									>
+										{extractingEfficacy
+											? 'Analyzing with AI…'
+											: 'Analyze with AI (TSH / BNP / Homocysteine)'}
+									</button>
+								</div>
+
+								{#if extractingEfficacy}
+									<p class="text-xs text-emerald-700">Reading report and extracting values…</p>
+								{:else if extractionError}
+									<p class="text-xs text-red-600">{extractionError}</p>
+								{:else if tshValue !== null || homocysteineValue !== null || bnpValue !== null}
+									<div class="mt-2 rounded-lg bg-white px-3 py-2 text-xs text-gray-800">
+										<p class="font-semibold text-gray-900">Extracted values (AI):</p>
+										<ul class="mt-1 space-y-0.5">
+											<li>TSH: {tshValue !== null ? tshValue : '—'}</li>
+											<li>Homocysteine: {homocysteineValue !== null ? homocysteineValue : '—'}</li>
+											<li>BNP / NT-proBNP: {bnpValue !== null ? bnpValue : '—'}</li>
+										</ul>
+									</div>
+								{/if}
 							</div>
 						{/if}
 					</div>

@@ -1,8 +1,10 @@
+<!-- src/lib/components/general/Header.svelte -->
 <script lang="ts">
 	import { UserRound, LogOut } from '@lucide/svelte';
 	import { logout } from '$lib/auth';
 	import { currentUser } from '$lib/auth';
 	import { onMount } from 'svelte';
+	import { navigating } from '$app/stores';
 
 	let open = false;
 
@@ -35,7 +37,7 @@
 </script>
 
 <header
-	class="sticky top-0 z-50 flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 text-slate-900"
+	class="relative sticky top-0 z-50 flex w-full items-center justify-between overflow-hidden border-b border-slate-200 bg-slate-50 px-4 py-3 text-slate-900"
 >
 	<!-- Left Label -->
 	<a href="/" class="font-bold tracking-tight">SAM-CHF</a>
@@ -66,6 +68,13 @@
 			</div>
 		{/if}
 	</div>
+
+	<!-- Bottom navigation loader -->
+	<div class="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
+		{#if $navigating}
+			<div class="header-loader h-full w-1/3 bg-emerald-500" />
+		{/if}
+	</div>
 </header>
 
 <style>
@@ -81,5 +90,17 @@
 	}
 	.animate-fadeIn {
 		animation: fadeIn 0.12s ease-out;
+	}
+
+	@keyframes headerSlide {
+		0% {
+			transform: translateX(-100%);
+		}
+		100% {
+			transform: translateX(300%);
+		}
+	}
+	.header-loader {
+		animation: headerSlide 0.9s ease-in-out infinite alternate;
 	}
 </style>
