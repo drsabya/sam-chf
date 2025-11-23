@@ -1,11 +1,17 @@
 // src/routes/apis/vision/efficacy/+server.ts
-// src/routes/apis/vision/efficacy/+server.ts
 import type { RequestHandler } from './$types';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_API_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
-// Make sure key is coming from SvelteKit env
+// Runtime read of env var (will NOT be in the built JS as a literal)
+const GEMINI_API_KEY = env.GEMINI_API_KEY;
+
+// Optional: simple guard + log
 console.log('Gemini key present?', !!GEMINI_API_KEY);
+
+if (!GEMINI_API_KEY) {
+	throw new Error('GEMINI_API_KEY is not set in environment');
+}
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -52,12 +58,10 @@ Do not add any extra text.
 		const response = result.response;
 		const text = response.text().trim();
 
-		// Try to parse JSON safely
 		let parsed: any = {};
 		try {
 			parsed = JSON.parse(text);
 		} catch {
-			// If Gemini adds extra text, try to strip before/after braces
 			const match = text.match(/\{[\s\S]*\}/);
 			if (match) {
 				parsed = JSON.parse(match[0]);

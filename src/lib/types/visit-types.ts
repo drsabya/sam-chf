@@ -6,6 +6,7 @@ export type VisitType = {
 	dueDate: string;
 	scheduledOn: string | null; // 👉 default null when not scheduled
 	completedOn: string | null; // 👉 default null when visit not completed
+	voucherGiven: boolean | true; // default true
 
 	// IMPORTANT DOCUMENTS
 	safetySrc?: string | null;
